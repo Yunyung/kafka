@@ -418,6 +418,7 @@ public class CompositeReadOnlyWindowStoreTest {
         underlyingWindowStore.put("a", "a", 0L);
         secondUnderlying.put("b", "b", 10L);
         secondUnderlying.put("c", "c", 10L);
+        System.out.println("HereTryPrintln");
         final List<KeyValue<Windowed<String>, String>> results =
             StreamsTestUtils.toList(windowStore.backwardFetch(null, "b", ofEpochMilli(0), ofEpochMilli(10)));
         assertThat(results, equalTo(Arrays.asList(
