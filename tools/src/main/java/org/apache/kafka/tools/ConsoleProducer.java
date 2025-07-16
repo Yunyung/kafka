@@ -30,7 +30,6 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Properties;
 
 import joptsimple.OptionException;
 import joptsimple.OptionSpec;
@@ -50,9 +49,6 @@ import static org.apache.kafka.clients.producer.ProducerConfig.RETRIES_CONFIG;
 import static org.apache.kafka.clients.producer.ProducerConfig.RETRY_BACKOFF_MS_CONFIG;
 import static org.apache.kafka.clients.producer.ProducerConfig.SEND_BUFFER_CONFIG;
 import static org.apache.kafka.clients.producer.ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG;
-import static org.apache.kafka.common.utils.Utils.loadProps;
-import static org.apache.kafka.common.utils.Utils.propsToStringMap;
-import static org.apache.kafka.server.util.CommandLineUtils.parseKeyValueArgs;
 
 public class ConsoleProducer {
     public static void main(String[] args) {
@@ -149,7 +145,8 @@ public class ConsoleProducer {
                             "If specified without value, then it defaults to 'gzip'")
                     .withOptionalArg()
                     .describedAs("compression-codec")
-                    .ofType(String.class);
+                    .ofType(String.class)
+                    .defaultsTo(CompressionType.GZIP.name);
             batchSizeOpt = parser.accepts("batch-size", "Number of messages to send in a single batch if they are not being sent synchronously. " +
                             "please note that this option will be replaced if max-partition-memory-bytes is also set")
                     .withRequiredArg()
@@ -284,65 +281,44 @@ public class ConsoleProducer {
             return options.has(syncOpt);
         }
 
-        String compressionCodec() {
-            if (options.has(compressionCodecOpt)) {
-                String codecOptValue = options.valueOf(compressionCodecOpt);
-                // Defaults to gzip if no value is provided.
-                return codecOptValue == null || codecOptValue.isEmpty() ? CompressionType.GZIP.name : codecOptValue;
-            }
-
-            return CompressionType.NONE.name;
-        }
-
         String readerClass() {
             return options.valueOf(messageReaderOpt);
         }
 
-        Map<String, String> readerProps() throws IOException {
-            Map<String, String> properties = new HashMap<>();
+        Map<String, Object> readerProps() throws IOException {
+            Map<String, Object> commandlineMap = new HashMap<>();
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, "topic", topicOpt);
+            Map<String, Object> map = CommandLineUtils.mergeByPriority(options, readerConfigOpt, propertyOpt, commandlineMap);
 
-            if (options.has(readerConfigOpt)) {
-                properties.putAll(propsToStringMap(loadProps(options.valueOf(readerConfigOpt))));
-            }
-
-            properties.put("topic", options.valueOf(topicOpt));
-            properties.putAll(propsToStringMap(parseKeyValueArgs(options.valuesOf(propertyOpt))));
-
-            return properties;
+            return map;
         }
 
-        Properties producerProps() throws IOException {
-            Properties props = new Properties();
+        Map<String, Object> producerProps() throws IOException {
+            Map<String, Object> commandlineMap = new HashMap<>();
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, BOOTSTRAP_SERVERS_CONFIG, bootstrapServerOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, COMPRESSION_TYPE_CONFIG, compressionCodecOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, LINGER_MS_CONFIG, sendTimeoutOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, ACKS_CONFIG, requestRequiredAcksOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, REQUEST_TIMEOUT_MS_CONFIG, requestTimeoutMsOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, RETRIES_CONFIG, messageSendMaxRetriesOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, RETRY_BACKOFF_MS_CONFIG, retryBackoffMsOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, SEND_BUFFER_CONFIG, socketBufferSizeOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, BUFFER_MEMORY_CONFIG, maxMemoryBytesOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, BATCH_SIZE_CONFIG, batchSizeOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, BATCH_SIZE_CONFIG, maxPartitionMemoryBytesOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, METADATA_MAX_AGE_CONFIG, metadataExpiryMsOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, MAX_BLOCK_MS_CONFIG, maxBlockMsOpt);
 
-            if (options.has(producerConfigOpt)) {
-                props.putAll(loadProps(options.valueOf(producerConfigOpt)));
-            }
+            Map<String, Object> defaultMap = Map.of(
+                BOOTSTRAP_SERVERS_CONFIG, CompressionType.NONE.name,
+                CLIENT_ID_CONFIG, "console-producer",
+                KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer",
+                VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer"
+            );
 
-            props.putAll(parseKeyValueArgs(options.valuesOf(producerPropertyOpt)));
-            props.put(BOOTSTRAP_SERVERS_CONFIG, options.valueOf(bootstrapServerOpt));
-            props.put(COMPRESSION_TYPE_CONFIG, compressionCodec());
+            Map<String, Object> map = CommandLineUtils.mergeByPriority(options, producerConfigOpt, producerPropertyOpt, commandlineMap, defaultMap);
 
-            if (props.getProperty(CLIENT_ID_CONFIG) == null) {
-                props.put(CLIENT_ID_CONFIG, "console-producer");
-            }
-
-            props.put(KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer");
-            props.put(VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer");
-
-            CommandLineUtils.maybeMergeOptions(props, LINGER_MS_CONFIG, options, sendTimeoutOpt);
-            CommandLineUtils.maybeMergeOptions(props, ACKS_CONFIG, options, requestRequiredAcksOpt);
-            CommandLineUtils.maybeMergeOptions(props, REQUEST_TIMEOUT_MS_CONFIG, options, requestTimeoutMsOpt);
-            CommandLineUtils.maybeMergeOptions(props, RETRIES_CONFIG, options, messageSendMaxRetriesOpt);
-            CommandLineUtils.maybeMergeOptions(props, RETRY_BACKOFF_MS_CONFIG, options, retryBackoffMsOpt);
-            CommandLineUtils.maybeMergeOptions(props, SEND_BUFFER_CONFIG, options, socketBufferSizeOpt);
-            CommandLineUtils.maybeMergeOptions(props, BUFFER_MEMORY_CONFIG, options, maxMemoryBytesOpt);
-            // We currently have 2 options to set the batch.size value. We'll deprecate/remove one of them in KIP-717.
-            CommandLineUtils.maybeMergeOptions(props, BATCH_SIZE_CONFIG, options, batchSizeOpt);
-            CommandLineUtils.maybeMergeOptions(props, BATCH_SIZE_CONFIG, options, maxPartitionMemoryBytesOpt);
-            CommandLineUtils.maybeMergeOptions(props, METADATA_MAX_AGE_CONFIG, options, metadataExpiryMsOpt);
-            CommandLineUtils.maybeMergeOptions(props, MAX_BLOCK_MS_CONFIG, options, maxBlockMsOpt);
-
-            return props;
+            return map;
         }
     }
 }

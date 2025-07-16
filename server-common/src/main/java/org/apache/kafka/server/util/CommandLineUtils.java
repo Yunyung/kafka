@@ -22,15 +22,12 @@ import org.apache.kafka.common.utils.AppInfoParser;
 import org.apache.kafka.common.utils.Exit;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Properties;
-import java.util.Set;
+import java.util.*;
 
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
+import org.apache.kafka.common.utils.Utils;
 
 /**
  * Helper functions for dealing with command line utilities.
@@ -178,6 +175,80 @@ public class CommandLineUtils {
             }
         });
         return props;
+    }
+
+
+    public static Map<String, Object> mergeByPriority(OptionSet options, OptionSpec<String> configOpt, Map<String, Object> overrides) throws IOException {
+        return mergeByPriority(options, configOpt, overrides, null);
+    }
+
+    public static Map<String, Object> mergeByPriority(OptionSet options, OptionSpec<String> configOpt, OptionSpec<String> PropertyOpt, Map<String, Object> overrides) throws IOException {
+        return mergeByPriority(options, configOpt, PropertyOpt, overrides, null);
+    }
+
+    public static Map<String, Object> mergeByPriority(OptionSet options, OptionSpec<String> configOpt, Map<String, Object> overrides, Map<String, Object> defaultIfMissing) throws IOException {
+        return mergeByPriority(options, configOpt, null, overrides, defaultIfMissing);
+    }
+
+    /**
+     * Merges multiple configuration sources by priority. The merge order is as follows, from high to low:
+     * 1) Command line arguments
+     * 2) Properties passed as key=value pairs via command line
+     * 3) Configuration files
+     * 4) Default values set by tool scripts
+     */
+    public static Map<String, Object> mergeByPriority(OptionSet options, OptionSpec<String> configOpt, OptionSpec<String> propertyOpt, Map<String, Object> overrides, Map<String, Object> defaultMap) throws IOException {
+        Map<String, Object> map = new HashMap<>();
+
+        if (defaultMap != null) {
+            map.putAll(defaultMap);
+        }
+        if (configOpt != null && options.has(configOpt)) {
+            map.putAll(Utils.propsToMap(
+                Utils.loadProps(options.valueOf(configOpt)))
+            );
+        }
+        if (propertyOpt != null && options.has(propertyOpt)) {
+            map.putAll(Utils.propsToMap(
+                parseKeyValueArgs(options.valuesOf(propertyOpt)))
+            );
+        }
+        if (overrides != null) {
+            map.putAll(overrides);
+        }
+
+        return map;
+    }
+
+    public static void maybeMergeOption(OptionSet options, Map<String, Object> map, String key, OptionSpec<?> spec)
+    {
+        maybeMergeOption(options, map, key, spec, null);
+    }
+
+    /**
+     * Merge the option into {@code map} for the given {@code key} using the following logic:
+     * 1) Merge the option value into the map if the option is present and has a value or a default value provided.
+     * 2) Use {@code valueIfNoRequiredArg} if the option is present but its value is null.
+     * 3) Otherwise, do nothing
+     */
+    public static void maybeMergeOption(OptionSet options, Map<String, Object> map, String key, OptionSpec<?> spec, Object valueIfNoRequiredArg)
+    {
+        if (!options.has(spec)) {
+            return;
+        }
+
+        Object value = options.valueOf(spec);
+        if (value == null) {
+            // This can also be null if the option is meant to be used without any argument (e.g., --from-latest)
+            // In that case, valueIfNoRequiredArg acts as the value
+            if (valueIfNoRequiredArg == null) {
+                System.err.println("No value specified for option \"" + key + "\" and no value provided.");
+                Exit.exit(1);
+            }
+            value = valueIfNoRequiredArg;
+        }
+
+        map.put(key, value);
     }
 
     /**

@@ -38,8 +38,8 @@ import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
@@ -324,7 +324,7 @@ public class ConsumerPerformance {
             }
             if (options != null) {
                 CommandLineUtils.maybePrintHelpOrVersion(this, "This tool is used to verify the consumer performance.");
-                CommandLineUtils.checkRequiredArgs(parser, options, topicOpt, numMessagesOpt);
+                CommandLineUtils.checkRequiredArgs(parser, options, bootstrapServerOpt, topicOpt, numMessagesOpt);
             }
         }
 
@@ -336,22 +336,25 @@ public class ConsumerPerformance {
             return options.valueOf(bootstrapServerOpt);
         }
 
-        public Properties props() throws IOException {
-            Properties props = (options.has(consumerConfigOpt))
-                ? Utils.loadProps(options.valueOf(consumerConfigOpt))
-                : new Properties();
-            props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerHostsAndPorts());
-            props.put(ConsumerConfig.GROUP_ID_CONFIG, options.valueOf(groupIdOpt));
-            props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, options.valueOf(socketBufferSizeOpt).toString());
-            props.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, options.valueOf(fetchSizeOpt).toString());
-            props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
-                options.has(resetBeginningOffsetOpt) ? "latest" : "earliest");
-            props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-            props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-            props.put(ConsumerConfig.CHECK_CRCS_CONFIG, "false");
-            if (props.getProperty(ConsumerConfig.CLIENT_ID_CONFIG) == null)
-                props.put(ConsumerConfig.CLIENT_ID_CONFIG, "perf-consumer-client");
-            return props;
+        public Map<String, Object> props() throws IOException {
+            Map<String, Object> commandlineMap = new HashMap<>();
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServerOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, ConsumerConfig.GROUP_ID_CONFIG, groupIdOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, ConsumerConfig.RECEIVE_BUFFER_CONFIG, socketBufferSizeOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, fetchSizeOpt);
+            CommandLineUtils.maybeMergeOption(options, commandlineMap, ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, resetBeginningOffsetOpt, "latest");
+
+            Map<String, Object> defaultMap = Map.of(
+                ConsumerConfig.CLIENT_ID_CONFIG, "perf-consumer-client",
+                ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class,
+                ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class,
+                ConsumerConfig.CHECK_CRCS_CONFIG, "false",
+                ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest"
+            );
+
+            Map<String, Object> map = CommandLineUtils.mergeByPriority(options, consumerConfigOpt, commandlineMap, defaultMap);
+
+            return map;
         }
 
         public Set<String> topic() {

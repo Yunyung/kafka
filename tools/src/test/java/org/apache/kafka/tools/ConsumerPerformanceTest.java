@@ -110,7 +110,7 @@ public class ConsumerPerformanceTest {
 
         ConsumerPerformance.ConsumerPerfOptions config = new ConsumerPerformance.ConsumerPerfOptions(args);
 
-        assertEquals("consumer-1", config.props().getProperty(ConsumerConfig.CLIENT_ID_CONFIG));
+        assertEquals("consumer-1", config.props().get(ConsumerConfig.CLIENT_ID_CONFIG));
     }
 
     @Test
@@ -123,7 +123,7 @@ public class ConsumerPerformanceTest {
 
         ConsumerPerformance.ConsumerPerfOptions config = new ConsumerPerformance.ConsumerPerfOptions(args);
 
-        assertEquals("perf-consumer-client", config.props().getProperty(ConsumerConfig.CLIENT_ID_CONFIG));
+        assertEquals("perf-consumer-client", config.props().get(ConsumerConfig.CLIENT_ID_CONFIG));
     }
 
     private void testHeaderMatchContent(boolean detailed, int expectedOutputLineCount, Runnable runnable) {
